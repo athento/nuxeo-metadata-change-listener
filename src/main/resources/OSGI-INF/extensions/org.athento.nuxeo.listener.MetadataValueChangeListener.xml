@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<component name="org.athento.nuxeo.listener.MetadataValueChangeListener">
+ <extension target="org.nuxeo.ecm.core.event.EventServiceComponent" point="listener">
+	<listener name="MetadataValueChangeListener" async="true" postCommit="true"
+		class="org.athento.nuxeo.listener.MetadataValueChangeListener">
+		<event>beforeDocumentModification</event>
+	</listener>
+ </extension>
+</component> 
+
+
