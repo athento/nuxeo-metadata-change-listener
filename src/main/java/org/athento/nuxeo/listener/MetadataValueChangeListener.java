@@ -19,7 +19,10 @@ import org.nuxeo.ecm.core.event.EventContext;
 import org.nuxeo.ecm.core.event.EventListener;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
 import org.nuxeo.ecm.platform.comment.api.CommentManager;
+import org.nuxeo.ecm.platform.ui.web.util.files.FileUtils.TemporaryFileBlob;
 import org.nuxeo.ecm.platform.usermanager.UserManager;
+import org.nuxeo.ecm.platform.web.common.locale.DefaultLocaleProvider;
+import org.nuxeo.ecm.user.center.profile.localeProvider.UserLocaleProvider;
 import org.nuxeo.runtime.api.Framework;
 
 public class MetadataValueChangeListener implements EventListener {
@@ -65,15 +68,14 @@ public class MetadataValueChangeListener implements EventListener {
 				Locale locale = Locale.getDefault();
 				Principal principal = documentManager.getPrincipal();
 				try {
-					UserManager userManager = (UserManager)Framework.getService(UserManager.class);
 					if (_log.isDebugEnabled()) {
 						_log.debug(" The principal: " + principal);
 					}
-					DocumentModel user = userManager.getUserModel(principal.getName());
-
-					String userLocale = String.valueOf(user.getPropertyValue("userprofile:locale"));
-					String localeString = userLocale;
-					locale = new Locale(localeString);
+					UserLocaleProvider lp = new UserLocaleProvider();
+					locale = lp.getLocale(documentManager);
+					if (_log.isDebugEnabled()) {
+						_log.debug(" Locale for principal is: " + locale);
+					}
 				}
 				catch (Exception e) {
 					_log.error("Unable to get locale for user: " + principal, e);
@@ -200,6 +202,8 @@ public class MetadataValueChangeListener implements EventListener {
 				sb.append(ite.next());
 				sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
 			}
+		} if ((o instanceof TemporaryFileBlob)) {
+			return ((TemporaryFileBlob)o).getFilename();
 		} else {
 			_log.warn("Unable to Stringify object: " 
 				+ o.getClass().getCanonicalName());
