@@ -5,12 +5,14 @@ import java.text.DateFormat;
 import java.util.ArrayList;
 import java.util.GregorianCalendar;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.nuxeo.common.utils.i18n.I18NUtils;
+import org.nuxeo.ecm.automation.features.PlatformFunctions;
 import org.nuxeo.ecm.core.api.ClientException;
 import org.nuxeo.ecm.core.api.CoreSession;
 import org.nuxeo.ecm.core.api.DocumentModel;
@@ -18,12 +20,16 @@ import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventContext;
 import org.nuxeo.ecm.core.event.EventListener;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
+import org.nuxeo.ecm.core.schema.SchemaManager;
+import org.nuxeo.ecm.core.schema.types.Schema;
 import org.nuxeo.ecm.platform.comment.api.CommentManager;
 import org.nuxeo.ecm.platform.ui.web.util.files.FileUtils.TemporaryFileBlob;
 import org.nuxeo.ecm.platform.usermanager.UserManager;
 import org.nuxeo.ecm.platform.web.common.locale.DefaultLocaleProvider;
 import org.nuxeo.ecm.user.center.profile.localeProvider.UserLocaleProvider;
 import org.nuxeo.runtime.api.Framework;
+import org.nuxeo.theme.vocabularies.VocabularyItem;
+import org.nuxeo.theme.vocabularies.VocabularyManager;
 
 public class MetadataValueChangeListener implements EventListener {
 
@@ -36,8 +42,8 @@ public class MetadataValueChangeListener implements EventListener {
 		if (_log.isDebugEnabled()) {
 			_log.debug(" Context is: " + ctx.getClass());
 		}
-		if ("beforeDocumentModification".equals(event.getName())) {
-			try {
+		try {
+			if ("beforeDocumentModification".equals(event.getName())) {
 				if (!(ctx instanceof DocumentEventContext)) {
 					throw new Exception("Context is NOT a DocumentEventContext");
 				}
@@ -52,112 +58,205 @@ public class MetadataValueChangeListener implements EventListener {
 				if (doc == null) {
 					throw new Exception("Document in context is null");
 				}
-				if (_log.isDebugEnabled()) {
-					_log.debug(" Getting current version of document: " + doc.getRef());
-				}
-				CommentManager commentManager = (CommentManager)Framework.getService(CommentManager.class);
-				
-				CoreSession documentManager = docCtx.getCoreSession();
-				DocumentModel currentDocument = documentManager.getDocument(doc.getRef());
-				if (_log.isDebugEnabled()) {
-					_log.debug(" ... current document is: " + currentDocument);
-				}
-				if (_log.isDebugEnabled()) {
-					_log.debug(" Getting all model schemas: ");
-				}
-				Locale locale = Locale.getDefault();
-				Principal principal = documentManager.getPrincipal();
-				try {
+				boolean documentTypeMustBeChecked = isDocumentTraceable(doc);
+				if (documentTypeMustBeChecked) {
 					if (_log.isDebugEnabled()) {
-						_log.debug(" The principal: " + principal);
+						_log.debug(" Getting current version of document: " + doc.getRef());
 					}
-					UserLocaleProvider lp = new UserLocaleProvider();
-					locale = lp.getLocale(documentManager);
+					CommentManager commentManager = (CommentManager)Framework
+						.getService(CommentManager.class);
+					CoreSession documentManager = docCtx.getCoreSession();
+					Principal principal = documentManager.getPrincipal();
+					DocumentModel currentDocument = documentManager.getDocument(doc.getRef());
 					if (_log.isDebugEnabled()) {
-						_log.debug(" Locale for principal is: " + locale);
+						_log.debug(" ... current document is: " + currentDocument);
+						_log.debug(" Getting all model schemas: ");
 					}
-				}
-				catch (Exception e) {
-					_log.error("Unable to get locale for user: " + principal, e);
-				}
+					Locale locale = getLocaleForUser(documentManager);
 
-				String bundleName = "messages";
-
-				StringBuilder metadataChanged = new StringBuilder();
-				Map<String, Object> metadata;
-				Map<String, Object> currentMetadata;
-				for (String schema : doc.getSchemas()) {
-					if (_log.isDebugEnabled()) {
-						_log.debug(" \\_ getting properties for schema: " 
-							+ schema);
-					}
-					metadata = doc.getProperties(schema);
-					currentMetadata = currentDocument.getProperties(schema);
-					for (String key : metadata.keySet()) {
-						Object newValue = metadata.get(key);
-						Object oldValue = currentMetadata.get(key);
+					StringBuilder metadataChanged = new StringBuilder();
+					Map<String, Object> metadata;
+					Map<String, Object> currentMetadata;
+					for (String schemaName : doc.getSchemas()) {
 						if (_log.isDebugEnabled()) {
-							_log.debug("  \\_metadata newValue for: " + key 
-								+ ": " + newValue);
-							_log.debug("      oldValue was: " + oldValue);
+							_log.debug(" \\_ getting properties for schema: " 
+								+ schemaName);
 						}
-						boolean valueChanged = isValueChanged(
-							key, oldValue, newValue);
-						if (valueChanged) {
+						metadata = doc.getProperties(schemaName);
+						currentMetadata = currentDocument.getProperties(schemaName);
+						for (String keyName : metadata.keySet()) {
 							if (_log.isDebugEnabled()) {
-								_log.debug("!! VALUE CHANGED for: " + key);
+								_log.debug("  + analyzing changes for: " + keyName); 
 							}
-							String msg = I18NUtils.getMessageString(
-								bundleName, 
-								MetadataValueChangeListener.LOG_MESSAGE_TEMPLATE, 
-								new Object[] {
-									principal.getName(),
-									key,
-									toString(oldValue, locale),
-									toString(newValue, locale)
-								}, locale);
-							if (_log.isDebugEnabled()) {
-								_log.debug("LOG message: " + msg);
+							String key = cleanKeyName(keyName);
+							if (ignoreKey(keyName)) {
+								if (_log.isWarnEnabled()) {
+									_log.warn("** value change for [" + keyName + "] ignored!");
+								}
+							} else {
+								Object newValue = metadata.get(keyName);
+								Object oldValue = currentMetadata.get(keyName);
+								if (_log.isDebugEnabled()) {
+									_log.debug("   - newValue  is: " + newValue);
+									_log.debug("   - oldValue was: " + oldValue);
+								}
+								boolean valueChanged = isValueChanged(
+									keyName, oldValue, newValue);
+								if (valueChanged) {
+									if (_log.isDebugEnabled()) {
+										_log.debug("=> VALUE CHANGED for: " + keyName);
+									}
+									String keyVocabularyName = Framework
+										.getProperty(getPropertyNameForMetadata(
+											schemaName, key));
+									String translatedOldValue = translateValue(
+										oldValue, keyVocabularyName, locale);
+									String translatedNewValue = translateValue(
+										newValue, keyVocabularyName, locale);
+									String labelToTranslate = "label." 
+										+ schemaName + "." + key;
+									String translatedKey = I18NUtils.getMessageString(
+										bundleName, labelToTranslate, null, locale);
+									if (_log.isDebugEnabled()) {
+										_log.debug(" labels to translate: "); 
+										_log.debug("  -> keyVocabularyName: " 
+											+ keyVocabularyName);
+										_log.debug("  -> translatedKey: " 
+											+ translatedKey);
+										_log.debug("  -> translatedOldValue: " 
+											+ translatedOldValue);
+										_log.debug("  -> translatedNewValue: " 
+											+ translatedNewValue);
+									}
+									String msg = I18NUtils.getMessageString(
+										bundleName, 
+										MetadataValueChangeListener.LOG_MESSAGE_TEMPLATE, 
+										new Object[] {
+											principal.getName(),
+											translatedKey,
+											translatedOldValue,
+											translatedNewValue
+										}, locale);
+									if (_log.isDebugEnabled()) {
+										_log.debug("Comment message: " + msg);
+									}
+									metadataChanged.append(msg);
+									metadataChanged.append(
+										MetadataValueChangeListener.LINE_SEPARATOR);
+								}
+								else if (_log.isDebugEnabled()) {
+									_log.debug("=== nothing changes");
+								}
 							}
-							metadataChanged.append(msg);
-							metadataChanged.append(
-								MetadataValueChangeListener.LINE_SEPARATOR);
-						}
-						else if (_log.isDebugEnabled()) {
-							_log.debug("   nothing changes");
 						}
 					}
-				}
-				if (_log.isDebugEnabled()) {
-					_log.debug("Auditing log: " 
-						+ MetadataValueChangeListener.LINE_SEPARATOR
-						+ metadataChanged.toString());
-				}
-				if (metadataChanged.length() > 0) {
 					if (_log.isDebugEnabled()) {
-						_log.debug("Creating comment... ");
+						_log.debug("Auditing log: " 
+							+ MetadataValueChangeListener.LINE_SEPARATOR
+							+ metadataChanged.toString());
 					}
-					commentManager.createComment(
-						doc, metadataChanged.toString(), principal.getName());
+					if (metadataChanged.length() > 0) {
+						if (_log.isDebugEnabled()) {
+							_log.debug("Creating comment... ");
+						}
+						commentManager.createComment(
+							doc, metadataChanged.toString(), principal.getName());
+					}
+				} else {
+					if (_log.isWarnEnabled()) {
+						_log.warn("! Document type: " + doc.getDocumentType().getName() 
+							+ " not traced. To trace it, include in properties file: " 
+							+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
+					}
 				}
 			}
-			catch (Exception e) {
-				_log.error("Unable to handleEvent: " + e.getMessage(), e);
-			}
+		}
+		catch (Exception e) {
+			_log.error("Unable to handleEvent: " + e.getMessage(), e);
 		}
 	}
 
+	private String cleanKeyName(String keyName) {
+		String[] keyParts = keyName.split(":");
+		String key = keyParts[0];
+		if (keyParts.length > 0) {
+			key = keyParts[keyParts.length-1];
+		}
+		return key;
+	}
+
+	private Locale getLocaleForUser(CoreSession session) {
+		Locale locale = Locale.getDefault();
+		try {
+			if (_log.isDebugEnabled()) {
+				_log.debug(" The session: " + session);
+			}
+			UserLocaleProvider lp = new UserLocaleProvider();
+			locale = lp.getLocale(session);
+			if (_log.isDebugEnabled()) {
+				_log.debug(" Locale for principal is: " + locale);
+			}
+		}
+		catch (Exception e) {
+			_log.error("Unable to get locale for coreSession: " + session, e);
+		}
+		return locale;
+	}
+
+	private String getPropertyNameForMetadata(String schemaName, String keyName) {
+		return "vocabulary." + schemaName + "." + keyName;
+	}
+
+	private boolean ignoreKey(String key) {
+		boolean keyignored = true;
+		String prefixesTraced = Framework.getProperty(
+			MetadataValueChangeListener.PROPERTY_TRACED_METADATA_PREFIXES);
+		if (_log.isDebugEnabled()) {
+			_log.debug("     (property " 
+				+ MetadataValueChangeListener.PROPERTY_TRACED_METADATA_PREFIXES 
+				+ " value: " + prefixesTraced + ")");
+		}
+	
+		String[] prefixes = prefixesTraced.split(",");
+		for (String prefix: prefixes) {
+			if (key.startsWith(prefix)) {
+				if (_log.isDebugEnabled()) {
+					_log.debug("     this metadata must be checked!");
+				}
+				return false;
+			}
+		}
+		if (_log.isDebugEnabled()) {
+			_log.debug("     this metadata must NOT be checked");
+		}
+		return keyignored;
+	}
+
+	private boolean isDocumentTraceable(DocumentModel doc) {
+		String documentTypeName = doc.getDocumentType().getName();
+		String documentTypesTraced = Framework.getProperty(
+			MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
+		if (_log.isDebugEnabled()) {
+			_log.debug("     (property " 
+				+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES 
+				+ " value: " + documentTypesTraced + ")");
+		}
+		String[] types = documentTypesTraced.split(",");
+		boolean traceDocument = false;
+		for (String type: types) {
+			if (documentTypeName.equals(type)) {
+				if (_log.isDebugEnabled()) {
+					_log.debug("     this documentType must be checked!");
+				}
+				traceDocument = true;
+				break;
+			}
+		}
+		return traceDocument;
+	}
+
 	private boolean isValueChanged(String key, Object oldValue, Object newValue) {
-		boolean keyignored = (
-			key.contains("dc:contributor")
-			||
-			key.contains("dc:subject")
-		);
-		_log.info(" >> key [" + key + "] ignored: " + keyignored);
-		boolean result = 
-			(
-				!(keyignored)
-				&&
+			boolean result = 
 				(
 					( (oldValue == null) && (newValue != null) ) 
 					|| 
@@ -168,24 +267,27 @@ public class MetadataValueChangeListener implements EventListener {
 						||
 						( (newValue != null) && (!newValue.equals(oldValue)) )
 					)
-				)
-			);
-//		if (_log.isDebugEnabled()) {
-//			_log.debug("??? isValueChanged for key: " + key);
-//			_log.debug("    oldValue: " + toString(oldValue, Locale.getDefault()));
-//			_log.debug("    newValue: " + toString(newValue, Locale.getDefault()));
-//			_log.debug("RESULT: " + result);
-//		}
-		return result;
-	}
-	
+				);
+	//		if (_log.isDebugEnabled()) {
+	//			_log.debug("??? isValueChanged for key: " + key);
+	//			_log.debug("    oldValue: " + toString(oldValue, Locale.getDefault()));
+	//			_log.debug("    newValue: " + toString(newValue, Locale.getDefault()));
+	//			_log.debug("RESULT: " + result);
+	//		}
+			return result;
+		}
+
 	private String toString(Object o, Locale locale) {
 		StringBuilder sb = new StringBuilder();
 		if (o == null) {
-			return String.valueOf("NULL");
+			return String.valueOf(" ");
 		}
 		if ((o instanceof String)) {
 			return (String)o;
+		}
+		if ((o instanceof java.lang.Boolean)) {
+			return I18NUtils.getMessageString(
+				bundleName, ((Boolean)o).toString(), null, locale);
 		}
 		if ((o instanceof String[])) {
 			for (String s : (String[])o) {
@@ -211,9 +313,31 @@ public class MetadataValueChangeListener implements EventListener {
 		return sb.toString();
 	}
 
-	private static final String LOG_MESSAGE_TEMPLATE 
-		= "label.org.athento.nuxeo.listener.user-X-modified-metadata-Y-from-value-A-to-value-B";
+	private String translateValue(Object value, String keyVocabularyName,
+		Locale locale) throws Exception {
+		if (keyVocabularyName == null || keyVocabularyName.isEmpty()) {
+			return toString(value, locale);
+		}
+		if (value == null) {
+			return "";
+		}
+		String valueLabel = pf.getVocabularyLabel(
+			keyVocabularyName, toString(value, locale));
+		String translatedValue = I18NUtils.getMessageString(
+			bundleName, valueLabel, null, locale);
+		return translatedValue;
+	}
+
+	private static String bundleName = "messages";
+	private static PlatformFunctions pf = new PlatformFunctions();
 	private static final String LINE_SEPARATOR 
 		= System.getProperty("line.separator");
-	private static Log _log = LogFactory.getLog(MetadataValueChangeListener.class);
+	private static final String LOG_MESSAGE_TEMPLATE 
+	= "label.org.athento.nuxeo.listener.user-X-modified-metadata-Y-from-value-A-to-value-B";
+	private static final String PROPERTY_TRACED_METADATA_PREFIXES 
+		= "traced.metadata.prefixes";
+	private static final String PROPERTY_TRACED_DOCUMENT_TYPES 
+		= "traced.document.types";
+	private static Log _log = LogFactory.getLog(
+		MetadataValueChangeListener.class);
 }
