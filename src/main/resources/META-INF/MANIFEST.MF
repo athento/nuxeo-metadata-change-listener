@@ -1,15 +1,16 @@
 Manifest-Version: 1.0
-Archiver-Version: Plexus Archiver
-Created-By: Apache Maven
-Built-By: athento
-Build-Jdk: 1.7.0_67
-Bundle-Vendor: Nuxeo
 Bundle-ActivationPolicy: lazy
 Bundle-ClassPath: .
-Bundle-Version: 1.0.qualifier
+Built-By: athento
 Bundle-Name: nuxeo-metadata-change-listener
-Bundle-ManifestVersion: 2
-Nuxeo-Component: OSGI-INF/extensions/org.athento.nuxeo.listener.MetadataValueChangeListener.xml
-Bundle-SymbolicName: nuxeo-metadata-change-listener
+Created-By: Apache Maven
 Bundle-RequiredExecutionEnvironment: JavaSE-1.7
+Bundle-Vendor: Nuxeo
+Build-Jdk: 1.7.0_67
+Bundle-Version: 1.0.qualifier
+Bundle-ManifestVersion: 2
+Nuxeo-Component: OSGI-INF/extensions/org.athento.nuxeo.listener.Metada
+ taValueChangeListener.xml
+Bundle-SymbolicName: nuxeo-metadata-change-listener
+Archiver-Version: Plexus Archiver
 
