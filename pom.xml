@@ -3,9 +3,9 @@
   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.athento.nuxeo.listeners</groupId>
-  <artifactId>metadataChangeValueListener</artifactId>
-  <version>1.0</version>
-  <name>metadataChangeValueListener</name>
+  <artifactId>nuxeo-metadata-change-listener-plugin</artifactId>
+  <version>1.2</version>
+  <name>nuxeo-metadata-change-listener-plugin</name>
   <description/>
   <dependencyManagement>
     <dependencies>
