@@ -90,8 +90,8 @@ public class MetadataValueChangeListener implements EventListener {
 							}
 							String key = cleanKeyName(keyName);
 							if (ignoreKey(keyName)) {
-								if (_log.isWarnEnabled()) {
-									_log.warn("** value change for [" + keyName + "] ignored!");
+								if (_log.isDebugEnabled()) {
+									_log.debug("** value change for [" + keyName + "] ignored!");
 								}
 							} else {
 								Object newValue = metadata.get(keyName);
@@ -163,8 +163,8 @@ public class MetadataValueChangeListener implements EventListener {
 							doc, metadataChanged.toString(), principal.getName());
 					}
 				} else {
-					if (_log.isWarnEnabled()) {
-						_log.warn("! Document type: " + doc.getDocumentType().getName() 
+					if (_log.isDebugEnabled()) {
+						_log.debug("! Document type: " + doc.getDocumentType().getName() 
 							+ " not traced. To trace it, include in properties file: " 
 							+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
 					}
