@@ -48,6 +48,10 @@
 		<unzip from="${bundle.fileName}" to="${bundle.fileName}.tmp" prefix="OSGI-INF/l10n">
 			<include>OSGI-INF/l10n/*-messages.properties</include>
 		</unzip>
+		<append from="${bundle.fileName}.tmp" pattern="pt_PT-messages.properties" 
+			to="nuxeo.war/WEB-INF/classes/messages_pt_PT.properties" addNewLine="true"/>
+		<append from="${bundle.fileName}.tmp" pattern="pt_PT-messages.properties" 
+			to="nuxeo.war/WEB-INF/classes/messages_pt.properties" addNewLine="true"/>
 		<append from="${bundle.fileName}.tmp" pattern="es_ES-messages.properties" 
 			to="nuxeo.war/WEB-INF/classes/messages_es_ES.properties" addNewLine="true"/>
 		<append from="${bundle.fileName}.tmp" pattern="es_ES-messages.properties" 
