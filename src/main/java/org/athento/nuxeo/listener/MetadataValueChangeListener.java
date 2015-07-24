@@ -212,17 +212,8 @@ public class MetadataValueChangeListener implements EventListener {
 
 	private boolean ignoreKey(String key) {
 		boolean keyignored = true;
-		String prefixesTraced = Framework.getProperty(
-			MetadataValueChangeListener.PROPERTY_TRACED_METADATA_PREFIXES);
-		if (_log.isDebugEnabled()) {
-			_log.debug("     (property " 
-				+ MetadataValueChangeListener.PROPERTY_TRACED_METADATA_PREFIXES 
-				+ " value: " + prefixesTraced + ")");
-		}
-	
-		String[] prefixes = prefixesTraced.split(",");
 		for (String prefix: prefixes) {
-			if (key.startsWith(prefix)) {
+			if (key.equals(prefix)) {
 				if (_log.isDebugEnabled()) {
 					_log.debug("     this metadata must be checked!");
 				}
@@ -237,14 +228,6 @@ public class MetadataValueChangeListener implements EventListener {
 
 	private boolean isDocumentTraceable(DocumentModel doc) {
 		String documentTypeName = doc.getDocumentType().getName();
-		String documentTypesTraced = Framework.getProperty(
-			MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
-		if (_log.isDebugEnabled()) {
-			_log.debug("     (property " 
-				+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES 
-				+ " value: " + documentTypesTraced + ")");
-		}
-		String[] types = documentTypesTraced.split(",");
 		boolean traceDocument = false;
 		for (String type: types) {
 			if (documentTypeName.equals(type)) {
@@ -337,18 +320,51 @@ public class MetadataValueChangeListener implements EventListener {
 			return toString(value,locale);
 		}
 	}
-
 	private static final String BUNDLE_NAME = "messages";
-	private static final PlatformFunctions pf = new PlatformFunctions();
 	private static final String[] EMPTY_ARRAY =  new String[0];
 	private static final String LINE_SEPARATOR 
 		= System.getProperty("line.separator");
 	private static final String LOG_MESSAGE_TEMPLATE 
 		= "label.org.athento.nuxeo.listener.user-X-modified-metadata-Y-from-value-A-to-value-B";
-	private static final String PROPERTY_TRACED_METADATA_PREFIXES 
-		= "traced.metadata.prefixes";
+	private static final String PROPERTY_TRACED_METADATA 
+		= "traced.metadata";
 	private static final String PROPERTY_TRACED_DOCUMENT_TYPES 
 		= "traced.document.types";
+	private static final PlatformFunctions pf = new PlatformFunctions();
+
+	private static String[] prefixes = null;
+	private static String[] types = null;
 	private static Log _log = LogFactory.getLog(
 		MetadataValueChangeListener.class);
+	static {
+		String prefixesTraced = Framework.getProperty(
+				MetadataValueChangeListener.PROPERTY_TRACED_METADATA);
+		if (_log.isDebugEnabled()) {
+			_log.debug("Framework Property " 
+				+ MetadataValueChangeListener.PROPERTY_TRACED_METADATA 
+				+ " value: " + prefixesTraced + ")");
+		}
+		if (prefixesTraced != null) {
+			prefixes = prefixesTraced.split(",");
+		}
+		if (prefixes == null) {
+			_log.warn("No properties are traced!!. Set property " 
+				+ MetadataValueChangeListener.PROPERTY_TRACED_METADATA);
+		}
+
+		String documentTypesTraced = Framework.getProperty(
+				MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
+			if (_log.isDebugEnabled()) {
+				_log.debug("Framework property " 
+					+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES 
+					+ " value: " + documentTypesTraced + ")");
+			}
+		if (documentTypesTraced != null) {
+			types = documentTypesTraced.split(",");
+		}
+		if (types == null) {
+			_log.warn("No document types are traced!!. Set property " 
+				+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
+		}
+	}
 }
