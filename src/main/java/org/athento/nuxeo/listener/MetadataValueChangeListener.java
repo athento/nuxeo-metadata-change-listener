@@ -19,6 +19,7 @@ import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventContext;
 import org.nuxeo.ecm.core.event.EventListener;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
+import org.nuxeo.ecm.directory.DirectoryException;
 import org.nuxeo.ecm.platform.comment.api.CommentManager;
 import org.nuxeo.ecm.platform.ui.web.util.files.FileUtils.TemporaryFileBlob;
 import org.nuxeo.ecm.user.center.profile.localeProvider.UserLocaleProvider;
@@ -271,29 +272,44 @@ public class MetadataValueChangeListener implements EventListener {
 		if ((o instanceof String)) {
 			return (String)o;
 		}
+		if (
+				(o instanceof Double)
+				||
+				(o instanceof Float)
+				||
+				(o instanceof Integer)
+				||
+				(o instanceof Long)
+			) {
+			return String.valueOf(o);
+		}
 		if ((o instanceof java.lang.Boolean)) {
 			return I18NUtils.getMessageString(
 				MetadataValueChangeListener.BUNDLE_NAME, ((Boolean)o).toString(),
 				null, locale);
+		}
+		if ((o instanceof GregorianCalendar)) {
+			DateFormat labelDateFormatter = DateFormat.getDateTimeInstance(
+				DateFormat.FULL, DateFormat.FULL, locale);
+			return labelDateFormatter.format(((GregorianCalendar)o).getTime());
+		}
+		if ((o instanceof TemporaryFileBlob)) {
+			return ((TemporaryFileBlob)o).getFilename();
 		}
 		if ((o instanceof String[])) {
 			for (String s : (String[])o) {
 				sb.append(s);
 				sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
 			}
-		} if ((o instanceof GregorianCalendar)) {
-			DateFormat labelDateFormatter = DateFormat.getDateTimeInstance(
-				DateFormat.FULL, DateFormat.FULL, locale);
-			return labelDateFormatter.format(((GregorianCalendar)o).getTime());
-		} if ((o instanceof ArrayList)) {
+		}
+		if ((o instanceof ArrayList)) {
 			Iterator ite = ((ArrayList)o).iterator();
 			while (ite.hasNext()) {
 				sb.append(ite.next());
 				sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
 			}
-		} if ((o instanceof TemporaryFileBlob)) {
-			return ((TemporaryFileBlob)o).getFilename();
-		} else {
+		}
+		if (sb.length() == 0) {
 			_log.warn("Unable to Stringify object: " 
 				+ o.getClass().getCanonicalName());
 		}
@@ -306,15 +322,25 @@ public class MetadataValueChangeListener implements EventListener {
 			return toString(value, locale);
 		}
 		if (value == null) {
+			if (_log.isDebugEnabled()) {
+				_log.debug("Value is null");
+			}
 			return "";
 		}
 		if (pf != null) {
-			String valueLabel = pf.getVocabularyLabel(
-				keyVocabularyName, toString(value, locale));
-			String translatedValue = I18NUtils.getMessageString(
-				MetadataValueChangeListener.BUNDLE_NAME, valueLabel, 
-				MetadataValueChangeListener.EMPTY_ARRAY, 
-				locale);
+			String translatedValue = null;
+			try {
+				String valueLabel = pf.getVocabularyLabel(
+					keyVocabularyName, toString(value, locale));
+				translatedValue = I18NUtils.getMessageString(
+					MetadataValueChangeListener.BUNDLE_NAME, valueLabel, 
+					MetadataValueChangeListener.EMPTY_ARRAY, 
+					locale);
+			} catch (DirectoryException e) {
+				_log.error("Unable to get Directory with name: " + keyVocabularyName,e);
+				_log.error("Returning value: " + value);
+				translatedValue = String.valueOf(value);
+			}
 			return translatedValue;
 		} else {
 			return toString(value,locale);
