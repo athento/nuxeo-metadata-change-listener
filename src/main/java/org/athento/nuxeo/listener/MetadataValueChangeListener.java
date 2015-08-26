@@ -336,7 +336,7 @@ public class MetadataValueChangeListener implements EventListener {
 					MetadataValueChangeListener.BUNDLE_NAME, valueLabel, 
 					MetadataValueChangeListener.EMPTY_ARRAY, 
 					locale);
-			} catch (DirectoryException e) {
+			} catch (Throwable e) {
 				_log.error("Unable to get Directory with name: " + keyVocabularyName,e);
 				_log.error("Returning value: " + value);
 				translatedValue = String.valueOf(value);
