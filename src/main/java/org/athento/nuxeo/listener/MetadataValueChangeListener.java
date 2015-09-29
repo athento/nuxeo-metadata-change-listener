@@ -19,7 +19,6 @@ import org.nuxeo.ecm.core.event.Event;
 import org.nuxeo.ecm.core.event.EventContext;
 import org.nuxeo.ecm.core.event.EventListener;
 import org.nuxeo.ecm.core.event.impl.DocumentEventContext;
-import org.nuxeo.ecm.directory.DirectoryException;
 import org.nuxeo.ecm.platform.comment.api.CommentManager;
 import org.nuxeo.ecm.platform.ui.web.util.files.FileUtils.TemporaryFileBlob;
 import org.nuxeo.ecm.user.center.profile.localeProvider.UserLocaleProvider;
@@ -28,7 +27,6 @@ import org.nuxeo.runtime.api.Framework;
 public class MetadataValueChangeListener implements EventListener {
 
 	public void handleEvent(Event event) throws ClientException {
-
 		if (_log.isDebugEnabled()) {
 			_log.debug("Handling event: " + event.getName());
 		}
@@ -36,14 +34,15 @@ public class MetadataValueChangeListener implements EventListener {
 		if (_log.isDebugEnabled()) {
 			_log.debug(" Context is: " + ctx.getClass());
 		}
+		DocumentEventContext docCtx = (DocumentEventContext)ctx;
+		if (_log.isDebugEnabled()) {
+			_log.debug(" DocumentContext is: " + docCtx);
+		}
+		CoreSession documentManager = docCtx.getCoreSession();
 		try {
 			if ("beforeDocumentModification".equals(event.getName())) {
 				if (!(ctx instanceof DocumentEventContext)) {
 					throw new Exception("Context is NOT a DocumentEventContext");
-				}
-				DocumentEventContext docCtx = (DocumentEventContext)ctx;
-				if (_log.isDebugEnabled()) {
-					_log.debug(" DocumentContext is: " + docCtx);
 				}
 				DocumentModel doc = docCtx.getSourceDocument();
 				if (_log.isDebugEnabled()) {
@@ -52,7 +51,8 @@ public class MetadataValueChangeListener implements EventListener {
 				if (doc == null) {
 					throw new Exception("Document in context is null");
 				}
-				boolean documentTypeMustBeChecked = isDocumentTraceable(doc);
+				Principal principal = documentManager.getPrincipal();
+				boolean documentTypeMustBeChecked = isDocumentTraceable(doc, principal);
 				if (documentTypeMustBeChecked) {
 					if (_log.isDebugEnabled()) {
 						_log.debug(" Getting current version of document: " 
@@ -60,8 +60,6 @@ public class MetadataValueChangeListener implements EventListener {
 					}
 					CommentManager commentManager = (CommentManager)Framework
 						.getService(CommentManager.class);
-					CoreSession documentManager = docCtx.getCoreSession();
-					Principal principal = documentManager.getPrincipal();
 					DocumentModel currentDocument = documentManager.getDocument(
 						doc.getRef());
 					if (_log.isDebugEnabled()) {
@@ -130,15 +128,39 @@ public class MetadataValueChangeListener implements EventListener {
 										_log.debug("  -> translatedNewValue: " 
 											+ translatedNewValue);
 									}
-									String msg = I18NUtils.getMessageString(
-										MetadataValueChangeListener.BUNDLE_NAME, 
-										MetadataValueChangeListener.LOG_MESSAGE_TEMPLATE, 
-										new Object[] {
-											principal.getName(),
-											translatedKey,
-											translatedOldValue,
-											translatedNewValue
-										}, locale);
+									String msg = null;
+									switch (getTypeOfChange(translatedOldValue, translatedNewValue)) {
+										case MetadataValueChangeListener.NULL_TO_VALUE: 
+											msg = I18NUtils.getMessageString(
+													MetadataValueChangeListener.BUNDLE_NAME, 
+													MetadataValueChangeListener.KEY_VALUE_SET, 
+													new Object[] {
+														principal.getName(),
+														translatedNewValue,
+														translatedKey
+													}, locale);
+											break;
+										case MetadataValueChangeListener.VALUE_TO_NULL: 
+											msg = I18NUtils.getMessageString(
+												MetadataValueChangeListener.BUNDLE_NAME, 
+												MetadataValueChangeListener.KEY_VALUE_TO_NULL, 
+												new Object[] {
+													principal.getName(),
+													translatedOldValue,
+													translatedKey
+												}, locale);
+											break;
+										default: 
+											msg = I18NUtils.getMessageString(
+												MetadataValueChangeListener.BUNDLE_NAME, 
+												MetadataValueChangeListener.KEY_VALUE_CHANGED, 
+												new Object[] {
+													principal.getName(),
+													translatedKey,
+													translatedOldValue,
+													translatedNewValue
+												}, locale);
+									}
 									if (_log.isDebugEnabled()) {
 										_log.debug("Comment message: " + msg);
 									}
@@ -161,7 +183,8 @@ public class MetadataValueChangeListener implements EventListener {
 						commentManager.createComment(
 							doc, metadataChanged.toString(), principal.getName());
 					} else {
-						_log.info("No changes found. No comment will be created");
+						_log.info("No changes found for document [" + doc.getName() + ":" 
+							+ doc.getId() + "]. No comment will be added");
 					}
 				} else {
 					if (_log.isDebugEnabled()) {
@@ -174,6 +197,9 @@ public class MetadataValueChangeListener implements EventListener {
 		}
 		catch (Exception e) {
 			_log.error("Unable to handleEvent: " + e.getMessage(), e);
+		} finally {
+//			documentManager.close();
+//			CoreInstance.closeCoreSession(documentManager);
 		}
 	}
 
@@ -211,6 +237,35 @@ public class MetadataValueChangeListener implements EventListener {
 		return key;
 	}
 
+	private int getTypeOfChange(String translatedOldValue,
+			String translatedNewValue) {
+		if (_log.isDebugEnabled()) {
+			_log.debug("(before trim) Type of change from [" 
+				+ translatedOldValue + "] to [" + translatedNewValue + "]");
+		}
+		String oldOne = translatedOldValue.trim();
+		String newOne = translatedNewValue.trim();
+		int returnedValue = MetadataValueChangeListener.VALUE_CHANGED;
+		if (oldOne==null || oldOne.isEmpty()) {
+			if (newOne!=null && !newOne.isEmpty()) {
+				returnedValue = MetadataValueChangeListener.NULL_TO_VALUE;
+			} else {
+				returnedValue = MetadataValueChangeListener.NO_CHANGE;
+			}
+		} else {
+			if (newOne==null || newOne.isEmpty()) {
+				returnedValue = MetadataValueChangeListener.VALUE_TO_NULL;
+			} else {
+				returnedValue = MetadataValueChangeListener.NO_CHANGE;
+			}
+		}
+		if (_log.isDebugEnabled()) {
+			_log.debug("(after trim) Type of change from [" + oldOne + "] to ["
+				+ newOne + "] ==> " + returnedValue);
+		}
+		return returnedValue;
+	}
+
 	private boolean ignoreKey(String key) {
 		boolean keyignored = true;
 		for (String prefix: prefixes) {
@@ -227,19 +282,30 @@ public class MetadataValueChangeListener implements EventListener {
 		return keyignored;
 	}
 
-	private boolean isDocumentTraceable(DocumentModel doc) {
+	private boolean isDocumentTraceable(DocumentModel doc, Principal principal) {
 		String documentTypeName = doc.getDocumentType().getName();
 		boolean traceDocument = false;
 		for (String type: types) {
 			if (documentTypeName.equals(type)) {
 				if (_log.isDebugEnabled()) {
-					_log.debug("     this documentType must be checked!");
+					_log.debug("     this documentType [" + documentTypeName 
+						+ "] must be checked!");
 				}
 				traceDocument = true;
 				break;
 			}
 		}
-		return traceDocument;
+		boolean traceUser = true;
+		for (String user: excludedUsers) {
+			if (principal.toString().equals(user)) {
+				if (_log.isDebugEnabled()) {
+					_log.debug("     this user [" + principal + "] MUST be ignored!");
+				}
+				traceUser = false;
+				break;
+			}
+		}
+		return traceDocument && traceUser;
 	}
 
 	private boolean isValueChanged(String key, Object oldValue, Object newValue) {
@@ -350,16 +416,31 @@ public class MetadataValueChangeListener implements EventListener {
 	private static final String[] EMPTY_ARRAY =  new String[0];
 	private static final String LINE_SEPARATOR 
 		= System.getProperty("line.separator");
-	private static final String LOG_MESSAGE_TEMPLATE 
+	private static final String KEY_VALUE_CHANGED 
 		= "label.org.athento.nuxeo.listener.user-X-modified-metadata-Y-from-value-A-to-value-B";
+	private static final String KEY_VALUE_SET 
+		= "label.org.athento.nuxeo.listener.user-X-has-set-value-A-for-metadata-Y";
+	private static final String KEY_VALUE_TO_NULL 
+		= "label.org.athento.nuxeo.listener.user-X-erased-value-A-from-metadata-Y";
+
+	private static final int NULL_TO_VALUE=1;
+	private static final int VALUE_TO_NULL=2;
+	private static final int VALUE_CHANGED=3;
+	private static final int NO_CHANGE=0;
+	
+	private static final String PROPERTY_EXCLUDED_USERS 
+		= "traced.excluded.users";
 	private static final String PROPERTY_TRACED_METADATA 
 		= "traced.metadata";
 	private static final String PROPERTY_TRACED_DOCUMENT_TYPES 
 		= "traced.document.types";
+
 	private static final PlatformFunctions pf = new PlatformFunctions();
 
+	private static String[] excludedUsers = null;
 	private static String[] prefixes = null;
 	private static String[] types = null;
+
 	private static Log _log = LogFactory.getLog(
 		MetadataValueChangeListener.class);
 	static {
@@ -391,6 +472,20 @@ public class MetadataValueChangeListener implements EventListener {
 		if (types == null) {
 			_log.warn("No document types are traced!!. Set property " 
 				+ MetadataValueChangeListener.PROPERTY_TRACED_DOCUMENT_TYPES);
+		}
+		
+		String usersExcluded = Framework.getProperty(
+				MetadataValueChangeListener.PROPERTY_EXCLUDED_USERS);
+		if (_log.isDebugEnabled()) {
+			_log.debug("Framework Property " 
+				+ MetadataValueChangeListener.PROPERTY_EXCLUDED_USERS 
+				+ " value: " + usersExcluded + ")");
+		}
+		if (usersExcluded != null) {
+			excludedUsers = usersExcluded.split(",");
+		}else {
+			_log.warn("No users are excluded!!. Set property " 
+				+ MetadataValueChangeListener.PROPERTY_EXCLUDED_USERS);
 		}
 	}
 }
