@@ -112,11 +112,16 @@ public class MetadataValueChangeListener implements EventListener {
 										newValue, keyVocabularyName, locale);
 									String labelToTranslate = "label." 
 										+ schemaName + "." + key;
-									String translatedKey = I18NUtils.getMessageString(
-										MetadataValueChangeListener.BUNDLE_NAME,
-										labelToTranslate, 
-										MetadataValueChangeListener.EMPTY_ARRAY, 
-										locale);
+									String translatedKey;
+									try {
+										translatedKey = I18NUtils.getMessageString(
+											MetadataValueChangeListener.BUNDLE_NAME,
+											labelToTranslate, 
+											MetadataValueChangeListener.EMPTY_ARRAY, 
+											locale);
+									} catch (NullPointerException e) {
+										translatedKey = labelToTranslate;
+									}
 									if (_log.isDebugEnabled()) {
 										_log.debug(" labels to translate: "); 
 										_log.debug("  -> keyVocabularyName: " 
@@ -284,6 +289,10 @@ public class MetadataValueChangeListener implements EventListener {
 
 	private boolean isDocumentTraceable(DocumentModel doc, Principal principal) {
 		String documentTypeName = doc.getDocumentType().getName();
+		if (_log.isInfoEnabled()) {
+			_log.info("Checking if document is traceable [" + documentTypeName
+				+ "] for user: " + principal);
+		}
 		boolean traceDocument = false;
 		for (String type: types) {
 			if (documentTypeName.equals(type)) {
@@ -298,8 +307,8 @@ public class MetadataValueChangeListener implements EventListener {
 		boolean traceUser = true;
 		for (String user: excludedUsers) {
 			if (principal.toString().equals(user)) {
-				if (_log.isDebugEnabled()) {
-					_log.debug("     this user [" + principal + "] MUST be ignored!");
+				if (_log.isWarnEnabled()) {
+					_log.warn("     this user [" + principal + "] MUST be ignored!");
 				}
 				traceUser = false;
 				break;
