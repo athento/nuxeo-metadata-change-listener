@@ -164,7 +164,12 @@ public class MetadataValueChangeListener implements EventListener {
 													}, locale);
 										}
 									} catch (Throwable e) {
-										_log.error("Unable to get translated message: ");
+										if (_log.isDebugEnabled()) {
+											_log.error("Unable to get translated message: ", e);
+										} else {
+											_log.error("Unable to get translated message: " + e);
+										}
+										
 										_log.error(" labels to translate: "); 
 										_log.error("  -> keyVocabularyName: " 
 											+ keyVocabularyName);
@@ -174,7 +179,8 @@ public class MetadataValueChangeListener implements EventListener {
 											+ translatedOldValue);
 										_log.error("  -> translatedNewValue: " 
 											+ translatedNewValue);
-										msg = translatedKey + " [" + translatedOldValue + "] -> ["+translatedNewValue+"]";
+										String lbl = translatedKey!=null?translatedKey:labelToTranslate;
+										msg = lbl + " [" + translatedOldValue + "] -> ["+translatedNewValue+"]";
 									}
 									if (_log.isDebugEnabled()) {
 										_log.debug("Comment message: " + msg);
@@ -241,8 +247,10 @@ public class MetadataValueChangeListener implements EventListener {
 		}
 		catch (Exception e) {
 			_log.error("Unable to get locale for coreSession: " + session, e);
+		}
+		if (locale == null) {
 			locale = Locale.getDefault();
-			_log.warn("Getting default locale: " + locale);
+			_log.warn("User has no Locale set. Getting default locale: " + locale);
 		}
 		return locale;
 	}
