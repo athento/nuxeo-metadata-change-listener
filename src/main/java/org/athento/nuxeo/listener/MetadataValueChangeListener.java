@@ -112,59 +112,75 @@ public class MetadataValueChangeListener implements EventListener {
 										newValue, keyVocabularyName, locale);
 									String labelToTranslate = "label." 
 										+ schemaName + "." + key;
-									String translatedKey;
-									try {
+									String translatedKey = null;
+									String msg = null;
+									try{
 										translatedKey = I18NUtils.getMessageString(
 											MetadataValueChangeListener.BUNDLE_NAME,
 											labelToTranslate, 
 											MetadataValueChangeListener.EMPTY_ARRAY, 
 											locale);
-									} catch (NullPointerException e) {
-										translatedKey = labelToTranslate;
-									}
-									if (_log.isDebugEnabled()) {
-										_log.debug(" labels to translate: "); 
-										_log.debug("  -> keyVocabularyName: " 
-											+ keyVocabularyName);
-										_log.debug("  -> translatedKey: " 
-											+ translatedKey);
-										_log.debug("  -> translatedOldValue: " 
-											+ translatedOldValue);
-										_log.debug("  -> translatedNewValue: " 
-											+ translatedNewValue);
-									}
-									String msg = null;
-									switch (getTypeOfChange(translatedOldValue, translatedNewValue)) {
-										case MetadataValueChangeListener.NULL_TO_VALUE: 
-											msg = I18NUtils.getMessageString(
+										if (_log.isDebugEnabled()) {
+											_log.debug(" labels to translate: "); 
+											_log.debug("  -> keyVocabularyName: " 
+												+ keyVocabularyName);
+											_log.debug("  -> translatedKey: " 
+												+ translatedKey);
+											_log.debug("  -> translatedOldValue: " 
+												+ translatedOldValue);
+											_log.debug("  -> translatedNewValue: " 
+												+ translatedNewValue);
+										}
+										switch (getTypeOfChange(translatedOldValue, translatedNewValue)) {
+											case MetadataValueChangeListener.NULL_TO_VALUE: 
+												msg = I18NUtils.getMessageString(
+														MetadataValueChangeListener.BUNDLE_NAME, 
+														MetadataValueChangeListener.KEY_VALUE_SET, 
+														new Object[] {
+															principal.getName(),
+															translatedNewValue,
+															translatedKey
+														}, locale);
+												break;
+											case MetadataValueChangeListener.VALUE_TO_NULL: 
+												msg = I18NUtils.getMessageString(
 													MetadataValueChangeListener.BUNDLE_NAME, 
-													MetadataValueChangeListener.KEY_VALUE_SET, 
+													MetadataValueChangeListener.KEY_VALUE_TO_NULL, 
 													new Object[] {
 														principal.getName(),
-														translatedNewValue,
+														translatedOldValue,
 														translatedKey
 													}, locale);
-											break;
-										case MetadataValueChangeListener.VALUE_TO_NULL: 
-											msg = I18NUtils.getMessageString(
-												MetadataValueChangeListener.BUNDLE_NAME, 
-												MetadataValueChangeListener.KEY_VALUE_TO_NULL, 
-												new Object[] {
-													principal.getName(),
-													translatedOldValue,
-													translatedKey
-												}, locale);
-											break;
-										default: 
-											msg = I18NUtils.getMessageString(
-												MetadataValueChangeListener.BUNDLE_NAME, 
-												MetadataValueChangeListener.KEY_VALUE_CHANGED, 
-												new Object[] {
-													principal.getName(),
-													translatedKey,
-													translatedOldValue,
-													translatedNewValue
-												}, locale);
+												break;
+											default:
+												msg = I18NUtils.getMessageString(
+													MetadataValueChangeListener.BUNDLE_NAME, 
+													MetadataValueChangeListener.KEY_VALUE_CHANGED, 
+													new Object[] {
+														principal.getName(),
+														translatedKey,
+														translatedOldValue,
+														translatedNewValue
+													}, locale);
+										}
+									} catch (Throwable e) {
+										if (_log.isDebugEnabled()) {
+											_log.error("Unable to get translated message: ", e);
+										} else {
+											_log.error("Unable to get translated message: " + e);
+										}
+										
+										_log.error(" labels to translate: "); 
+										_log.error("  -> keyVocabularyName: " 
+											+ keyVocabularyName);
+										_log.error("  -> translatedKey: " 
+											+ translatedKey);
+										_log.error("  -> translatedOldValue: " 
+											+ translatedOldValue);
+										_log.error("  -> translatedNewValue: " 
+											+ translatedNewValue);
+										String lbl = translatedKey!=null?translatedKey:labelToTranslate;
+										msg = lbl + " [" + translatedOldValue + "] -> ["+translatedNewValue+"]";
 									}
 									if (_log.isDebugEnabled()) {
 										_log.debug("Comment message: " + msg);
@@ -231,8 +247,10 @@ public class MetadataValueChangeListener implements EventListener {
 		}
 		catch (Exception e) {
 			_log.error("Unable to get locale for coreSession: " + session, e);
+		}
+		if (locale == null) {
 			locale = Locale.getDefault();
-			_log.warn("Getting default locale: " + locale);
+			_log.warn("User has no Locale set. Getting default locale: " + locale);
 		}
 		return locale;
 	}
@@ -289,10 +307,6 @@ public class MetadataValueChangeListener implements EventListener {
 
 	private boolean isDocumentTraceable(DocumentModel doc, Principal principal) {
 		String documentTypeName = doc.getDocumentType().getName();
-		if (_log.isInfoEnabled()) {
-			_log.info("Checking if document is traceable [" + documentTypeName
-				+ "] for user: " + principal);
-		}
 		boolean traceDocument = false;
 		for (String type: types) {
 			if (documentTypeName.equals(type)) {
@@ -340,7 +354,6 @@ public class MetadataValueChangeListener implements EventListener {
 		}
 
 	private String toString(Object o, Locale locale) {
-		StringBuilder sb = new StringBuilder();
 		if (o == null) {
 			return String.valueOf(" ");
 		}
@@ -358,37 +371,43 @@ public class MetadataValueChangeListener implements EventListener {
 			) {
 			return String.valueOf(o);
 		}
-		if ((o instanceof java.lang.Boolean)) {
-			return I18NUtils.getMessageString(
-				MetadataValueChangeListener.BUNDLE_NAME, ((Boolean)o).toString(),
-				null, locale);
-		}
-		if ((o instanceof GregorianCalendar)) {
-			DateFormat labelDateFormatter = DateFormat.getDateTimeInstance(
-				DateFormat.FULL, DateFormat.FULL, locale);
-			return labelDateFormatter.format(((GregorianCalendar)o).getTime());
-		}
-		if ((o instanceof TemporaryFileBlob)) {
-			return ((TemporaryFileBlob)o).getFilename();
-		}
-		if ((o instanceof String[])) {
-			for (String s : (String[])o) {
-				sb.append(s);
-				sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
+		try {
+			StringBuilder sb = new StringBuilder();
+			if ((o instanceof java.lang.Boolean)) {
+				return I18NUtils.getMessageString(
+					MetadataValueChangeListener.BUNDLE_NAME, ((Boolean)o).toString(),
+					null, locale);
 			}
-		}
-		if ((o instanceof ArrayList)) {
-			Iterator ite = ((ArrayList)o).iterator();
-			while (ite.hasNext()) {
-				sb.append(ite.next());
-				sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
+			if ((o instanceof GregorianCalendar)) {
+				DateFormat labelDateFormatter = DateFormat.getDateTimeInstance(
+					DateFormat.FULL, DateFormat.FULL, locale);
+				return labelDateFormatter.format(((GregorianCalendar)o).getTime());
 			}
+			if ((o instanceof TemporaryFileBlob)) {
+				return ((TemporaryFileBlob)o).getFilename();
+			}
+			if ((o instanceof String[])) {
+				for (String s : (String[])o) {
+					sb.append(s);
+					sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
+				}
+			}
+			if ((o instanceof ArrayList)) {
+				Iterator ite = ((ArrayList)o).iterator();
+				while (ite.hasNext()) {
+					sb.append(ite.next());
+					sb.append(MetadataValueChangeListener.LINE_SEPARATOR);
+				}
+			}
+			if (sb.length() == 0) {
+				_log.warn("Unable to Stringify object: " 
+					+ o.getClass().getCanonicalName());
+			}
+			return sb.toString();
+		} catch (NullPointerException e) {
+			_log.error("NullPointer exception catched when translating to locale [" + locale + "] object: " + o);
+			return o.toString(); // it could not be null as checked before
 		}
-		if (sb.length() == 0) {
-			_log.warn("Unable to Stringify object: " 
-				+ o.getClass().getCanonicalName());
-		}
-		return sb.toString();
 	}
 
 	private String translateValue(Object value, String keyVocabularyName,
